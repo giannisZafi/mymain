@@ -51,6 +51,8 @@ typedef struct process_control_block {
 
   rlnode children_node;   /**< @brief Intrusive node for @c children_list */
   rlnode exited_node;     /**< @brief Intrusive node for @c exited_list */
+  rlnode ptcb_list;    //list of ptcbs
+  int thread_count;    //number of threads connected to this pcb
 
   CondVar child_exit;     /**< @brief Condition variable for @c WaitChild. 
 

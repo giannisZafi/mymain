@@ -100,6 +100,8 @@ enum SCHED_CAUSE {
 typedef struct thread_control_block {
 
 	PCB* owner_pcb; /**< @brief This is null for a free TCB */
+	PTCB* ptcb;  //pointer to ptcb to connect tcb-ptcb
+	int priority; 
 
 	cpu_context_t context; /**< @brief The thread context */
 	Thread_type type; /**< @brief The type of thread */
@@ -129,6 +131,31 @@ typedef struct thread_control_block {
 #endif
 
 } TCB;
+
+/**
+  @brief The process thread control block
+
+  An object of this type is a connection between pcb and tcb. One pcb is connected to N
+  ptcb and one ptcb is connected to 1 tcb
+*/
+
+typedef struct process_thread_control_block{
+
+	TCB* tcb;           //pointer to connected tcb
+	Task task;				
+	int argl;
+	void* args;
+
+	int exitval;			
+	int exited;     //0 for not exited and 1 for exited thread
+
+	int detached;    //0 for not detached and 1 for detached thread
+	CondVar exit_cv;   
+	int refcount;     //used to count joined threads 
+
+	rlnode ptcb_list_node;  //node to connect ptcbs with ptcb list in pcb
+
+} PTCB;
 
 /** @brief Thread stack size.
 
@@ -184,6 +211,10 @@ TCB* cur_thread();
   @brief A timeout constant, denoting no timeout for sleep.
 */
 #define NO_TIMEOUT ((TimerDuration)-1)
+
+void start_new_thread();   //This function is given to spawn_thread when we create a new ptcb
+
+PTCB* createPTCB(Task call,int argl,void* args); 
 
 /**
 	@brief Create a new thread.

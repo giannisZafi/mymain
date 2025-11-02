@@ -289,6 +289,7 @@ typedef struct thread_control_block TCB;	/**< @brief Forward declaration */
 typedef struct core_control_block CCB;		/**< @brief Forward declaration */
 typedef struct device_control_block DCB;	/**< @brief Forward declaration */
 typedef struct file_control_block FCB;		/**< @brief Forward declaration */
+typedef struct process_thread_control_block PTCB; /**< @brief Forward declaration */
 
 /** @brief A convenience typedef */
 typedef struct resource_list_node * rlnode_ptr;
@@ -314,6 +315,7 @@ typedef struct resource_list_node {
     CCB* ccb;
     DCB* dcb;
     FCB* fcb;
+    PTCB* ptcb;
     void* obj;
     rlnode_ptr node;
     intptr_t num;
@@ -440,8 +442,6 @@ static inline void rlist_push_back(rlnode* list, rlnode* node) { rl_splice(list-
 
 	When it is applied to an empty list, the function will return the
 	list itself.
-
-	This function is equivalent to @c splice(list,node->next). 
 */
 static inline rlnode* rlist_pop_front(rlnode* list) { return rl_splice(list, list->next); }
 
@@ -450,11 +450,6 @@ static inline rlnode* rlist_pop_front(rlnode* list) { return rl_splice(list, lis
 
 	This function, applied on a non-empty list, will remove the tail of 
 	the list and return in.
-
-	When it is applied to an empty list, the function will return the
-	list itself.
-
-	This function is equivalent to @c splice(list,node->prev). 
 */
 static inline rlnode* rlist_pop_back(rlnode* list) { return rl_splice(list, list->prev); }
 
