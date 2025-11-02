@@ -3,7 +3,8 @@
 #include "kernel_cc.h"
 #include "kernel_proc.h"
 #include "kernel_streams.h"
-
+#include "util.h"
+#include "kernel_sched.h"
 
 /* 
  The process table and related system calls:
@@ -35,12 +36,14 @@ static inline void initialize_PCB(PCB* pcb)
   pcb->pstate = FREE;
   pcb->argl = 0;
   pcb->args = NULL;
+  pcb->thread_count=0;
 
   for(int i=0;i<MAX_FILEID;i++)
     pcb->FIDT[i] = NULL;
 
   rlnode_init(& pcb->children_list, NULL);
   rlnode_init(& pcb->exited_list, NULL);
+  rlnode_init(& pcb->ptcb_list, NULL);  //initialiaze ptcb list
   rlnode_init(& pcb->children_node, pcb);
   rlnode_init(& pcb->exited_node, pcb);
   pcb->child_exit = COND_INIT;
@@ -124,6 +127,23 @@ void start_main_thread()
   Exit(exitval);
 }
 
+void start_new_thread(){
+
+  int exitval;
+  TCB* curThread=cur_thread();
+
+  Task call =  curThread->ptcb->task;
+  int argl = curThread->ptcb->argl;
+  void* args = curThread->ptcb->args;
+
+  exitval = call(argl,args);
+  ThreadExit(exitval);
+
+
+}
+
+
+
 
 /*
 	System call to create a new process.
@@ -132,8 +152,11 @@ Pid_t sys_Exec(Task call, int argl, void* args)
 {
   PCB *curproc, *newproc;
   
+
+  
   /* The new process PCB */
   newproc = acquire_PCB();
+
 
   if(newproc == NULL) goto finish;  /* We have run out of PIDs! */
 
@@ -173,13 +196,25 @@ Pid_t sys_Exec(Task call, int argl, void* args)
     newproc->args=NULL;
 
   /* 
-    Create and wake up the thread for the main function. This must be the last thing
-    we do, because once we wakeup the new thread it may run! so we need to have finished
+    For multi-threaded processes we have to create and initialize a PTCB and add it to the list
+    of ptcb in the new PCB. Then we create a new TCB and link it with the PTCB and increase
+    the number of threads.
+
+
+  Create and wake up the thread for the main function. This must be the last thing 
+   we do, because once we wakeup the new thread it may run! so we need to have finished
     the initialization of the PCB.
    */
+
   if(call != NULL) {
-    newproc->main_thread = spawn_thread(newproc, start_main_thread);
-    wakeup(newproc->main_thread);
+    PTCB* ptcb=createPTCB(call,argl,args);
+    rlnode* ptcb_node=rlnode_init(&ptcb->ptcb_list_node,ptcb);
+    rlist_push_back(&newproc->ptcb_list,ptcb_node);
+    TCB* tcb=spawn_thread(newproc,start_main_thread);
+    ptcb->tcb=tcb;
+    tcb->ptcb=ptcb;
+    newproc->thread_count++;
+    wakeup(tcb);
   }
 
 
@@ -300,61 +335,10 @@ void sys_Exit(int exitval)
   if(get_pid(curproc)==1) {
 
     while(sys_WaitChild(NOPROC,NULL)!=NOPROC);
-
-  } else {
-
-    /* Reparent any children of the exiting process to the 
-       initial task */
-    PCB* initpcb = get_pcb(1);
-    while(!is_rlist_empty(& curproc->children_list)) {
-      rlnode* child = rlist_pop_front(& curproc->children_list);
-      child->pcb->parent = initpcb;
-      rlist_push_front(& initpcb->children_list, child);
-    }
-
-    /* Add exited children to the initial task's exited list 
-       and signal the initial task */
-    if(!is_rlist_empty(& curproc->exited_list)) {
-      rlist_append(& initpcb->exited_list, &curproc->exited_list);
-      kernel_broadcast(& initpcb->child_exit);
-    }
-
-    /* Put me into my parent's exited list */
-    rlist_push_front(& curproc->parent->exited_list, &curproc->exited_node);
-    kernel_broadcast(& curproc->parent->child_exit);
-
   }
+    sys_ThreadExit(exitval);  //call of sys_ThreadExit
 
-  assert(is_rlist_empty(& curproc->children_list));
-  assert(is_rlist_empty(& curproc->exited_list));
-
-
-  /* 
-    Do all the other cleanup we want here, close files etc. 
-   */
-
-  /* Release the args data */
-  if(curproc->args) {
-    free(curproc->args);
-    curproc->args = NULL;
-  }
-
-  /* Clean up FIDT */
-  for(int i=0;i<MAX_FILEID;i++) {
-    if(curproc->FIDT[i] != NULL) {
-      FCB_decref(curproc->FIDT[i]);
-      curproc->FIDT[i] = NULL;
-    }
-  }
-
-  /* Disconnect my main_thread */
-  curproc->main_thread = NULL;
-
-  /* Now, mark the process as exited. */
-  curproc->pstate = ZOMBIE;
-
-  /* Bye-bye cruel world */
-  kernel_sleep(EXITED, SCHED_USER);
+  
 }
 
 

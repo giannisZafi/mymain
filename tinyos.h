@@ -320,7 +320,7 @@ Pid_t GetPPid(void);
 Tid_t CreateThread(Task task, int argl, void* args);
 
 /**
-  @brief Return the Tid of the current thread.
+  @brief Return the Tid of the current thread.    
  */
 Tid_t ThreadSelf();
 
