@@ -5,10 +5,6 @@
 #include "kernel_cc.h"
 #include "kernel_streams.h"
 
-
-/*This function is used to initialize a PTCB. It is used when we create the first PTCB
-  connected to PCB and when we create the other PTCBs inside of Create_Threads*/
-
 PTCB* createPTCB(Task call,int argl,void *args){
   PTCB*  ptcb=(PTCB*)xmalloc(sizeof(PTCB));
   ptcb->task=call;
@@ -32,19 +28,16 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
     return NOTHREAD;
   }
 
-  PCB* curproc=CURPROC;   //get current process
-  PTCB* newptcb=createPTCB(task,argl,args);  //initialize PTCB with curproc information
-  rlnode* ptcb_node=rlnode_init(&newptcb->ptcb_list_node,newptcb); 
-
-  /*Add created ptcb into ptcb list in pcb*/
+  PCB* curproc=CURPROC;
+  PTCB* newptcb=createPTCB(task,argl,args);
+  rlnode* ptcb_node=rlnode_init(&newptcb->ptcb_list_node,newptcb);
   rlist_push_back(&curproc->ptcb_list,ptcb_node);
 
-  /*Call spawn thread to create tcb and connect it with ptcb*/
   TCB* newtcb=spawn_thread(curproc,start_new_thread);
-  newtcb->ptcb=newptcb; 
+  newtcb->ptcb=newptcb;
   newptcb->tcb=newtcb;
-  curproc->thread_count++; //increase thread counts
-  wakeup(newtcb);         
+  curproc->thread_count++;
+  wakeup(newtcb);
 
 return (Tid_t) newptcb;
 }
@@ -63,38 +56,31 @@ Tid_t sys_ThreadSelf()
 int sys_ThreadJoin(Tid_t tid, int* exitval)
 {
 
-  PCB* curproc=CURPROC;  //get current process
-  /*Find thread with the given tid inside the ptcb list in current pcb
-  and if its not found or tries to join itself or is detached return -1;*/
+  PCB* curproc=CURPROC;
+  //rlnode* available_ptcb=&curproc->ptcb_list;
   rlnode* find_node=rlist_find(&curproc->ptcb_list,(PTCB*)tid,NULL);
   if(find_node==NULL || tid==sys_ThreadSelf() || find_node->ptcb->detached==1){
     return -1;
   }
-  else {   
+  else {
 
-    /*Else we increase refcount */
     PTCB* our_sweet_ptcb=find_node->ptcb;
     our_sweet_ptcb->refcount++;
 
-    /*while ptcb is not exited or detached wait*/
     while(!our_sweet_ptcb->exited && !our_sweet_ptcb->detached){
       kernel_wait(&our_sweet_ptcb->exit_cv,SCHED_USER);
     }
 
-    //when ptcb stops waiting decrease refcount
     our_sweet_ptcb->refcount--;
 
-    if(our_sweet_ptcb->detached){ 
+    if(our_sweet_ptcb->detached){
       return -1;
     }
 
-
-    //if we have an exitval set the current exitval to the given exitval
     if(exitval!=NULL){
       *exitval=our_sweet_ptcb->exitval;
     }
 
-    //if no one is waiting for ptcb we clean it
     if(our_sweet_ptcb->refcount==0){
       rlist_remove(&our_sweet_ptcb->ptcb_list_node);
       free(our_sweet_ptcb);
@@ -114,15 +100,14 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   */
 int sys_ThreadDetach(Tid_t tid)
 {
-	PCB* curproc=CURPROC;   //get current process
-  rlnode* find_node=rlist_find(&curproc->ptcb_list,(PTCB*)tid,NULL); /*search for given Tid in ptcb list
-  inside the pcb of current process*/
-  if(find_node==NULL){     
-    return -1;}      //if the node is not found return -1
-  else if (find_node->ptcb->exited==1){  //if the thread is exited it can't be detached so it returns -1
+	PCB* curproc=CURPROC;
+  rlnode* find_node=rlist_find(&curproc->ptcb_list,(PTCB*)tid,NULL);
+  if(find_node==NULL){
+    return -1;}
+  else if (find_node->ptcb->exited==1){
     return -1;}
   else{
-    find_node->ptcb->detached=1;       //we make the thread detached and wake up all the connected threads
+    find_node->ptcb->detached=1;
     kernel_broadcast(&find_node->ptcb->exit_cv);
     return 0;}
 
@@ -135,17 +120,17 @@ int sys_ThreadDetach(Tid_t tid)
 void sys_ThreadExit(int exitval)
 {
 
-  PTCB* ptcb=(PTCB*) sys_ThreadSelf();  //get current thread
-  ptcb->exitval=exitval;       //save exitval          
-  ptcb->exited=1;             //make thread exited
+  PTCB* ptcb=(PTCB*) sys_ThreadSelf();
+  ptcb->exitval=exitval;
+  ptcb->exited=1;
 
-  PCB *curproc = CURPROC;    //get curproc
-  curproc->thread_count--;   //decrease thread count
+  PCB *curproc = CURPROC;
+  curproc->thread_count--;
 
-  kernel_broadcast(&ptcb->exit_cv);  //wake up all the threads that are waiting from Thread_Join
+  kernel_broadcast(&ptcb->exit_cv);
 
 
-  if(curproc->thread_count==0){   //if it's the last thread from the current process 
+  if(curproc->thread_count==0){
 
     if(get_pid(curproc)!=1){
 
@@ -194,9 +179,7 @@ void sys_ThreadExit(int exitval)
     }
   }
 
-
-  /*We clean ptcb from memory if it's exited and no one waits for it */
-  while(rlist_find(&curproc->ptcb_list,ptcb,FREE)!=NULL){
+  while(rlist_find(&curproc->ptcb_list,ptcb,FREE)){
     if(ptcb->refcount<1){
       rlist_remove(&ptcb->ptcb_list_node);
       free(ptcb);

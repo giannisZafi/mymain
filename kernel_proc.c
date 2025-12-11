@@ -43,7 +43,7 @@ static inline void initialize_PCB(PCB* pcb)
 
   rlnode_init(& pcb->children_list, NULL);
   rlnode_init(& pcb->exited_list, NULL);
-  rlnode_init(& pcb->ptcb_list, NULL);  //initialiaze ptcb list
+  rlnode_init(& pcb->ptcb_list, NULL);
   rlnode_init(& pcb->children_node, pcb);
   rlnode_init(& pcb->exited_node, pcb);
   pcb->child_exit = COND_INIT;
@@ -196,16 +196,10 @@ Pid_t sys_Exec(Task call, int argl, void* args)
     newproc->args=NULL;
 
   /* 
-    For multi-threaded processes we have to create and initialize a PTCB and add it to the list
-    of ptcb in the new PCB. Then we create a new TCB and link it with the PTCB and increase
-    the number of threads.
-
-
-  Create and wake up the thread for the main function. This must be the last thing 
-   we do, because once we wakeup the new thread it may run! so we need to have finished
+    Create and wake up the thread for the main function. This must be the last thing
+    we do, because once we wakeup the new thread it may run! so we need to have finished
     the initialization of the PCB.
    */
-
   if(call != NULL) {
     PTCB* ptcb=createPTCB(call,argl,args);
     rlnode* ptcb_node=rlnode_init(&ptcb->ptcb_list_node,ptcb);
@@ -336,15 +330,113 @@ void sys_Exit(int exitval)
 
     while(sys_WaitChild(NOPROC,NULL)!=NOPROC);
   }
-    sys_ThreadExit(exitval);  //call of sys_ThreadExit
+    sys_ThreadExit(exitval);
 
   
 }
 
 
+/*the file operations of the proc info*/
+static file_ops procinfo_ops = {  
+    .Open = NULL,
+    .Read = procinfo_read,
+    .Write = procinfo_write, 
+    .Close = procinfo_close
+};
+
+/*we don't need write function, it will just return -1*/
+int procinfo_write()
+{ 
+  return -1;      
+}
+
+int procinfo_read(void* icb, char *buf, unsigned int n) 
+{
+  /* In case the PCB doesn't exist, it returns an error. */
+  if (icb == NULL)
+  { 
+        return -1;
+  }
+
+  procinfo_cb* info_cb = (procinfo_cb*)icb; 
+
+  /* If the cursor can't be used in PT, return an error. */
+    if (info_cb->cursor < 1) 
+    {      
+      return -1;
+    }
+
+ /* If the cursor is a number greater than the max number of processes, return an error. */
+    if (info_cb->cursor > MAX_PROC)
+    {   
+      return -1;
+    }
+
+    if (info_cb->cursor == MAX_PROC)
+    {   
+        return 0;
+      
+    }
+
+  /* While we are 'falling into' free and empty PCBs, the cursor should move, until it finds an active PCB. */
+  while(PT[info_cb->cursor].pstate == FREE)
+  {
+        info_cb->cursor++; /* Increase cursor to read the next process. */
+
+        if (info_cb->cursor == MAX_PROC)
+            return 0;
+  }
+
+    /* At this point, we just fill the procinfo_cb with the PCB's information. */
+    info_cb->info.pid = info_cb->cursor;  
+    info_cb->info.ppid = get_pid((PT[info_cb->cursor]).parent);
+    info_cb->info.alive = PT[info_cb->cursor].pstate == ALIVE;
+    info_cb->info.thread_count = PT[info_cb->cursor].thread_count;
+    info_cb->info.main_task = PT[info_cb->cursor].main_task;
+    info_cb->info.argl = PT[info_cb->cursor].argl;
+
+    int argl; 
+
+     /* If the length of the info is greater than the maximum argument size the new integer argl... */
+    if (info_cb->info.argl > PROCINFO_MAX_ARGS_SIZE)
+    { 
+        argl = PROCINFO_MAX_ARGS_SIZE;  /* Will be equal to the maximum argument size and will be used in the following memcpy function.*/
+    } else {
+        argl = info_cb->info.argl;
+  }
+
+  /* Moving the data/ info of the PCB, of the read's buffer that called to make this operation for this PCB */
+  memcpy(info_cb->info.args,(char *)PT[info_cb->cursor].args, sizeof(char)* argl ); /* Is used to pass the process name. */
+  memcpy(buf, (char*)&info_cb->info, sizeof(procinfo));  /* Pass info to the buffer. */
+  
+  info_cb->cursor++; /* Move to the next PCB. */
+
+  return 1;
+}
+
+int procinfo_close(void* procinfo_cb)
+{
+    if (procinfo_cb != NULL)
+      free(procinfo_cb);
+    return 0;
+}
 
 Fid_t sys_OpenInfo()
 {
-	return NOFILE;
+    Fid_t fid;
+    FCB* fcb;
+
+  if (! FCB_reserve(1, &fid, &fcb))
+        return NOFILE;
+
+    procinfo_cb* new_info = xmalloc(sizeof(procinfo_cb));
+
+    new_info->cursor = 1; /* Initialization of the cursor to 1, so that we begin from the root PCB. */
+    
+    /* The FCB we reserved, now has as stream object the procinfo and as streamfunc the procinfo_ops */
+    fcb->streamobj = new_info;
+    fcb->streamfunc = &procinfo_ops;  
+
+  return fid;
 }
 

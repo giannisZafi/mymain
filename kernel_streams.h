@@ -128,6 +128,61 @@ void FCB_unreserve(size_t num, Fid_t *fid, FCB** fcb);
 FCB* get_fcb(Fid_t fid);
 
 
+typedef struct char_list_node 
+{
+	struct char_list_node *prev; /* This is used for the previous pointer */
+	struct char_list_node *next; /* This is used for the next pointer */
+	char c;
+} c_node;
+
+
+typedef struct pipe_control_block{
+
+	FCB* reader;
+	FCB* writer;
+
+	CondVar has_space; /*condition variable for blocking 
+	writer if there is no space available in the buffer*/
+
+	CondVar has_data; /*condition variable for blocking 
+	reader until there is data in the buffer*/
+	
+	int w_position; //write position in the buffer
+	int r_position; //read position in the buffer
+
+	int total_data; //num of data writen but not read 
+
+	char BUFFER[PIPE_BUFFER_SIZE];
+
+}pipe_cb;
+
+
+
+
+
+/*functions for the reader end of the pipe a function to read
+ and a function to close the read end*/
+int pipe_read(void* pipecb_t, char* buf, unsigned int n);
+int pipe_reader_close(void* _pipecb);
+
+/*a function called when there is wrong call like calling a write
+ function from the read end it returns -1*/
+int wrong_call();
+
+/*functions for the writer end of the pipe a function to write
+ and a function to close the write end*/
+int pipe_write(void* pipecb_t,const char *buf,unsigned int n);
+int pipe_writer_close(void* _pipecb);
+
+/*this function returns a NULL pointer so we know that it doesn't
+do anything because pipe is created in sys_Pipe*/
+void* null_open();
+
+
+
+
+
+
 /** @} */
 
 #endif
