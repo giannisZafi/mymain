@@ -129,8 +129,8 @@ void* allocate_thread(size_t size)
 #endif
 
 
-#define PRIORITY_QUEUES 5    //amount of priority queues
-#define YIELDS_CALLED 40     // after how many yields that have been called we increase the priority of all threads
+#define PRIORITY_QUEUES 5
+#define YIELDS_CALLED 40
 
 /*
   This is the function that is used to start normal threads.
@@ -166,7 +166,7 @@ TCB* spawn_thread(PCB* pcb, void (*func)())
 	tcb->thread_func = func;
 	tcb->wakeup_time = NO_TIMEOUT;
 	rlnode_init(&tcb->sched_node, tcb); /* Intrusive list node */
-	tcb->priority=PRIORITY_QUEUES-1;     //priority of created thread is the highest
+	tcb->priority=PRIORITY_QUEUES-1;
 
 	tcb->its = QUANTUM;
 	tcb->rts = QUANTUM;
@@ -227,7 +227,7 @@ void release_TCB(TCB* tcb)
   Both of these structures are protected by @c sched_spinlock.
 */
 
-rlnode SCHED[PRIORITY_QUEUES]; /* Priority queues for Multilevel feedback queue*/
+rlnode SCHED[PRIORITY_QUEUES]; /* The scheduler queue */
 rlnode TIMEOUT_LIST; /* The list of threads with a timeout */
 Mutex sched_spinlock = MUTEX_INIT; /* spinlock for scheduler queue */
 
@@ -331,7 +331,7 @@ static TCB* sched_queue_select(TCB* current)
 	/* Search in priority queues and when a not empty node is found, this node is the next thread*/
 
 	TCB* next_thread;
-	int priority_queue_num=PRIORITY_QUEUES-1; //used for searching through priority queues//
+	int priority_queue_num=PRIORITY_QUEUES-1;
   
   do{
   	rlnode* sel=rlist_pop_front(&SCHED[priority_queue_num]);
@@ -428,29 +428,26 @@ void yield(enum SCHED_CAUSE cause)
 
 	Mutex_Lock(&sched_spinlock);
 
-
-/*The highest priority is PRIORITY_QUEUES-1 and the lowest 0*/
-
 	switch(cause){
 
 		case SCHED_QUANTUM:
 			if(current->priority>0){
-			 current->priority--;}     //decrease priority//
+			 current->priority--;}
 			 break;
 		case SCHED_IO:
 			if(current->priority<PRIORITY_QUEUES-1){
-				current->priority++;}    //increase priority
+				current->priority++;}
 				break;
 		case SCHED_MUTEX:
 			if(current->last_cause==SCHED_MUTEX && current->priority>0){
-				current->priority--;     //decrease priority
+				current->priority--;
 			}
 			break;
 		default:
-			break;  //leave priority as it was
+			break;
 }
 
-rlnode* helper_node=NULL; //used as buffer for changed priorities
+//rlnode* helper_node=NULL; 
 
 
 	/* Update CURTHREAD state */
@@ -481,28 +478,21 @@ rlnode* helper_node=NULL; //used as buffer for changed priorities
 		cpu_swap_context(&current->context, &next->context);
 	}
 
-	yield_counter++;  //increase counter
+//	yield_counter++;
+
+//	if(yield_counter>=YIELDS_CALLED){
+//	for(int j=PRIORITY_QUEUES-2; j>=0; j--){    // PRIORITY_QUEUES-2, because at priority_queue-1 the thread is at highest level
+//			if(!is_rlist_empty(&SCHED[j])){
+//				helper_node=rlist_pop_back(&SCHED[j]);
+	//			rlist_push_front(&SCHED[j+1],helper_node);
 
 
-	/*increase all threads priority, except for those who are already on the highest,
-	when the counter reach the number of YIELDS_CALLED, so we don't have starvation*/
+		//		}
 
-	if(yield_counter>=YIELDS_CALLED){
-	for(int j=PRIORITY_QUEUES-2; j>=0; j--){    // PRIORITY_QUEUES-2, because at priority_queue-1 the thread is at highest level
-			if(!is_rlist_empty(&SCHED[j])){
+//}
 
-				/*take last node of the queue with lower priority and put it in the front
-				of the queue with the next higher priority*/
-				helper_node=rlist_pop_back(&SCHED[j]); 
-				rlist_push_front(&SCHED[j+1],helper_node);
-
-
-				}
-
-}
-
-yield_counter=0; /*reinitialize the counter after increasing the priority of all threads*/
-}
+yield_counter=0;
+//}
 		
 	/* This is where we get after we are switched back on! A long time
 	   may have passed. Start a new timeslice...
@@ -584,7 +574,6 @@ static void idle_thread()
 void initialize_scheduler()
 {
 
-/* initialize priority queues for multilevel feedback queue*/
 	for(int i=PRIORITY_QUEUES-1; i>=0; i--){
 	rlnode_init(&SCHED[i], NULL);
 }

@@ -18,6 +18,7 @@
 #include "tinyos.h"
 #include "kernel_sched.h"
 
+
 /**
   @brief PID state
 
@@ -51,8 +52,8 @@ typedef struct process_control_block {
 
   rlnode children_node;   /**< @brief Intrusive node for @c children_list */
   rlnode exited_node;     /**< @brief Intrusive node for @c exited_list */
-  rlnode ptcb_list;    //list of ptcbs
-  int thread_count;    //number of threads connected to this pcb
+  rlnode ptcb_list;
+  int thread_count;
 
   CondVar child_exit;     /**< @brief Condition variable for @c WaitChild. 
 
@@ -96,6 +97,18 @@ PCB* get_pcb(Pid_t pid);
   @returns the PID of the process, or NOPROC.
 */
 Pid_t get_pid(PCB* pcb);
+
+
+/* Procinfo is a struct that contains the variables that could describe a PCB. */
+typedef struct procinfo_cb 
+{
+  procinfo info;  
+  Pid_t cursor;   /* cursor used to go further to the contents/information of the PCB. */
+} procinfo_cb;
+
+int procinfo_close(void* procinfo_cb);
+int procinfo_write();
+int procinfo_read(void* info_cb, char *buf, unsigned int size);
 
 /** @} */
 

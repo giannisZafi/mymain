@@ -509,7 +509,9 @@ typedef struct pipe_s {
 	Fid_t read;			/**< The read end of the pipe */
 	Fid_t write;		/**< The write end of the pipe */
 } pipe_t;
+/** @brief The length of the buffer for a pipe */
 
+#define PIPE_BUFFER_SIZE 4096
 
 /**
 	@brief Construct and return a pipe.
